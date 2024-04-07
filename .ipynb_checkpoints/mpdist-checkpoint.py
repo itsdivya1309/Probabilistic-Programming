@@ -3,108 +3,6 @@
 from numba import njit
 import numpy as np
 
-
-@njit(cache=True, fastmath=True)
-def mpdist(
-    x: np.ndarray,
-    y: np.ndarray,
-    m: int = 0
-) -> float:
-    """
-    Matrix profile distance.
-
-    Parameters
-    ----------
-        ts1: numpy.array
-            First time series.
-        ts2: numpy.array
-            Second time series.
-        m: int
-            Length of the subsequences.
-
-    Output
-    ------
-        mpdist: float
-            Distance between the two time series.
-    """
-    r"""Compute the Matrix Profile distance between two time series.
-
-    Parameters
-    ----------
-    x : np.ndarray
-        First time series, either univariate, shape ``(n_timepoints,)``, or
-        multivariate, shape ``(n_channels, n_timepoints)``.
-    y : np.ndarray
-        Second time series, either univariate, shape ``(n_timepoints,)``, or
-        multivariate, shape ``(n_channels, n_timepoints)``.
-    m : int
-        Length of the subsequence.
-
-    Returns
-    -------
-    float
-        Matrix Profile distance between x and y, minimum value 0.
-
-    Raises
-    ------
-    ValueError
-        If x and y are not 1D or 2D arrays.
-
-    References
-    ----------
-    .. [1] Ratanamahatana C and Keogh E.: Three myths about dynamic time warping data
-    mining, Proceedings of 5th SIAM International Conference on Data Mining, 2005.
-
-    .. [2] Sakoe H. and Chiba S.: Dynamic programming algorithm optimization for
-    spoken word recognition. IEEE Transactions on Acoustics, Speech, and Signal
-    Processing 26(1):43–49, 1978.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from aeon.distances import mpdist
-    >>> x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-    >>> y = np.array([11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
-    >>> mpdist(x, y) # 1D series
-    768.0
-    >>> x = np.array([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [0, 1, 0, 2, 0]])
-    >>> y = np.array([[11, 12, 13, 14],[7, 8, 9, 20],[1, 3, 4, 5]] )
-    >>> mpdist(x, y) # 2D series with 3 channels, unequal length
-    564.0
-    """
-    if x.ndim == 2 and x.shape[0] > 1:
-        raise ValueError("x must be a 1D array or shape (1,n)")
-    if y.ndim == 2 and y.shape[0] > 1:
-        raise ValueError("y must be a 1D array or shape (1,n)")
-    x = x.squeeze()
-    y = y.squeeze()
-
-    len1 = len(x)
-    len2 = len(y)
-
-    if m == 0:
-        if len1 > len2:
-            m = int(len1 / 4)
-        else:
-            m = int(len2 / 4)
-    threshold = 0.05
-    mp_ab, ip_ab = _stomp_ab(x, y, m)  # compute the AB matrix profile
-    mp_ba, ip_ba = _stomp_ab(y, x, m)  # compute the BA matrix profile
-
-    join_mp = np.concatenate([mp_ab, mp_ba])
-
-    k = int(np.ceil(threshold * (len1 + len2)))
-
-    sorted_mp = np.sort(join_mp)  # sort the join matrix profile in ascending order
-
-    if len(sorted_mp) > k:
-        mpdist = sorted_mp[k]
-    else:
-        mpdist = sorted_mp[len(sorted_mp) - 1]
-
-    return mpdist
-
-
 @njit(cache=True, fastmath=True)
 def _sliding_dot_products(q, t, q_len, t_len):
     """
@@ -263,3 +161,55 @@ def _stomp_ab(ts1, ts2, m):
         ip[i] = np.argmin(dp)
 
     return mp, ip
+
+
+@njit(cache=True, fastmath=True)
+def mpdist(ts1: np.ndarray, ts2: np.ndarray, m: int = 0):
+    """
+    Matrix profile distance.
+
+    Parameters
+    ----------
+        ts1: numpy.array
+            First time series.
+        ts2: numpy.array
+            Second time series.
+        m: int
+            Length of the subsequences.
+
+    Output
+    ------
+        mpdist: float
+            Distance between the two time series.
+    """
+    if ts1.ndim == 2 and ts1.shape[0] > 1:
+        raise ValueError("ts1 must be a 1D array or shape (1,n)")
+    if ts2.ndim == 2 and ts2.shape[0] > 1:
+        raise ValueError("ts2 must be a 1D array or shape (1,n)")
+    ts1 = ts1.squeeze()
+    ts2 = ts2.squeeze()
+
+    len1 = len(ts1)
+    len2 = len(ts2)
+
+    if m == 0:
+        if len1 > len2:
+            m = int(len1 / 4)
+        else:
+            m = int(len2 / 4)
+    threshold = 0.05
+    mp_ab, ip_ab = _stomp_ab(ts1, ts2, m)  # compute the AB matrix profile
+    mp_ba, ip_ba = _stomp_ab(ts2, ts1, m)  # compute the BA matrix profile
+
+    join_mp = np.concatenate([mp_ab, mp_ba])
+
+    k = int(np.ceil(threshold * (len1 + len2)))
+
+    sorted_mp = np.sort(join_mp)  # sort the join matrix profile in ascending order
+
+    if len(sorted_mp) > k:
+        mpdist = sorted_mp[k]
+    else:
+        mpdist = sorted_mp[len(sorted_mp) - 1]
+
+    return mpdist
