@@ -10,23 +10,6 @@ def mpdist(
     y: np.ndarray,
     m: int = 0
 ) -> float:
-    """
-    Matrix profile distance.
-
-    Parameters
-    ----------
-        ts1: numpy.array
-            First time series.
-        ts2: numpy.array
-            Second time series.
-        m: int
-            Length of the subsequences.
-
-    Output
-    ------
-        mpdist: float
-            Distance between the two time series.
-    """
     r"""Compute the Matrix Profile distance between two time series.
 
     Parameters
@@ -79,8 +62,8 @@ def mpdist(
     x = x.squeeze()
     y = y.squeeze()
 
-    len1 = len(x)
-    len2 = len(y)
+    len_x = len(x)
+    len_y = len(y)
 
     if m == 0:
         if len1 > len2:
@@ -93,7 +76,7 @@ def mpdist(
 
     join_mp = np.concatenate([mp_ab, mp_ba])
 
-    k = int(np.ceil(threshold * (len1 + len2)))
+    k = int(np.ceil(threshold * (len_x + len_y)))
 
     sorted_mp = np.sort(join_mp)  # sort the join matrix profile in ascending order
 
@@ -193,15 +176,15 @@ def _calculate_distance_profile(
 
 
 @njit(cache=True, fastmath=True)
-def _stomp_ab(ts1, ts2, m):
+def _stomp_ab(x, y, m):
     """
     STOMP implementation for AB similarity join.
 
     Parameters
     ----------
-        ts1: numpy.array
+        x: numpy.array
             First time series.
-        ts2: numpy.array
+        y: numpy.array
             Second time series.
         m: int
             Length of the subsequences.
@@ -209,55 +192,55 @@ def _stomp_ab(ts1, ts2, m):
     Output
     ------
         mp: numpy.array
-            Array with the distance between every subsequence from ts1
-            to the nearest subsequence with same length from ts2.
+            Array with the distance between every subsequence from x
+            to the nearest subsequence with same length from y.
         ip: numpy.array
-            Array with the index of the nearest neighbor of ts1 in ts2.
+            Array with the index of the nearest neighbor of x in y.
     """
-    len1 = len(ts1)
-    len2 = len(ts2)
+    len_x = len(x)
+    len_y = len(y)
 
     # Number of subsequences
-    n_ts1_subs = len1 - m + 1
-    n_ts2_subs = len2 - m + 1
+    n_x_subs = len_x - m + 1
+    n_y_subs = len_y - m + 1
 
     # Compute the mean and standard deviation
-    ts1_mean = [np.mean(ts1[i : i + m]) for i in range(0, n_ts1_subs)]
-    ts1_std = [np.std(ts1[i : i + m]) for i in range(0, n_ts1_subs)]
+    x_mean = [np.mean(x[i : i + m]) for i in range(0, n_x_subs)]
+    x_std = [np.std(x[i : i + m]) for i in range(0, n_x_subs)]
 
-    ts2_mean = [np.mean(ts2[i : i + m]) for i in range(0, n_ts2_subs)]
-    ts2_std = [np.std(ts2[i : i + m]) for i in range(0, n_ts2_subs)]
+    y_mean = [np.mean(y[i : i + m]) for i in range(0, n_y_subs)]
+    y_std = [np.std(y[i : i + m]) for i in range(0, n_y_subs)]
 
     # Compute the dot products between the first ts2 subsequence and every
     # ts1 subsequence
-    dot_prod = _sliding_dot_products(ts2[0:m], ts1, m, len1)
+    dot_prod = _sliding_dot_products(y[0:m], x, m, len_x)
     first_dot_prod = np.copy(dot_prod)
 
     # Initialization
-    mp = np.full(n_ts1_subs, float("inf"))  # matrix profile
-    ip = np.zeros(n_ts1_subs)  # index profile
+    mp = np.full(n_x_subs, float("inf"))  # matrix profile
+    ip = np.zeros(n_x_subs)  # index profile
 
     # Compute the distance profile for the first ts1 subsequence
-    dot_prod = _sliding_dot_products(ts1[0:m], ts2, m, len2)
+    dot_prod = _sliding_dot_products(x[0:m], y, m, len_y)
     dp = _calculate_distance_profile(
-        dot_prod, ts1_mean[0], ts1_std[0], ts2_mean, ts2_std, m, n_ts2_subs
+        dot_prod, x_mean[0], x_std[0], y_mean, y_std, m, n_y_subs
     )
 
     # Updates the matrix profile
     mp[0] = np.amin(dp)
     ip[0] = np.argmin(dp)
 
-    for i in range(1, n_ts1_subs):
-        for j in range(n_ts2_subs - 1, 0, -1):
+    for i in range(1, n_x_subs):
+        for j in range(n_y_subs - 1, 0, -1):
             dot_prod[j] = (
                 dot_prod[j - 1]
-                - ts2[j - 1] * ts1[i - 1]
-                + ts2[j - 1 + m] * ts1[i - 1 + m]
+                - y[j - 1] * x[i - 1]
+                + y[j - 1 + m] * x[i - 1 + m]
             )  # compute the next dot products
             # using the previous ones
         dot_prod[0] = first_dot_prod[i]
         dp = _calculate_distance_profile(
-            dot_prod, ts1_mean[i], ts1_std[i], ts2_mean, ts2_std, m, n_ts2_subs
+            dot_prod, x_mean[i], x_std[i], y_mean, y_std, m, n_y_subs
         )
         mp[i] = np.amin(dp)
         ip[i] = np.argmin(dp)
